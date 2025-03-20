@@ -1,12 +1,12 @@
-DATA_NAME: "In"
-DATA_PATH: "data/Indian_Pines/Indian_pines_corrected.mat"
-LABEL_PATH: "data/Indian_Pines/Indian_pines_gt.mat"
+DATA_NAME: "Pu"
+DATA_PATH: "data/Pavia University/PaviaU.mat"
+LABEL_PATH: "data/Pavia University/PaviaU_gt.mat"
 
-MODEL_PATH: "checkpoints_in"
-MODEL_PATH_TEST: "checkpoints_in/dbnn_epoch_200.pth"
+MODEL_PATH: "checkpoints_pu"
+MODEL_PATH_TEST: "checkpoints_pu/dbnn_epoch_250.pth"
 FIGURE_DIR: "outputs"
 
 PATCH_SIZE: 5
 BATCH_SIZE: 32
 LEARNING_RATE: 0.001
-EPOCHS: 200
+EPOCHS: 250
