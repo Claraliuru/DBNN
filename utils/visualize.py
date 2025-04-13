@@ -61,7 +61,6 @@ class Visualize:
         plt.title("(b) {title}", y=-0.1)
         plt.axis('off')
 
-        # 保存图像
         plt.show()
 
     def visualize_comparison(self, ground_truth, model_maps:dict):
@@ -93,5 +92,4 @@ class Visualize:
             plt.title(f"({alphabet[i-1]})", y=-0.1)
             plt.axis('off')
         
-        # 保存图像
         plt.show()    
