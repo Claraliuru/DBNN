@@ -1,6 +1,12 @@
 models:
-  #- name: DBNN
-  - name: SVMPCA
+  - name: SimpleDBNN
+  - name: DBNN_multinn
+  - name: DBNN_noTrans
+  - name: DBNN_noatt
+  - name: DBNN_3x3
+  - name: DBNN
+  - name: DBNN_dropout
+  #- name: SVMPCA
   # - name: DBNN_gf
 
 datasets:
@@ -10,20 +16,21 @@ datasets:
     model_path: "checkpoints/IP"
     figure_dir: "outputs/IP"
 
-  # - name: PU
-  #   data_path: "data/PU/PU.mat"
-  #   label_path: "data/PU/PU_gt.mat"
-  #   model_path: "checkpoints/PU"
-  #   figure_dir: "outputs/PU"
+  - name: PU
+    data_path: "data/PU/PU.mat"
+    label_path: "data/PU/PU_gt.mat"
+    model_path: "checkpoints/PU"
+    figure_dir: "outputs/PU"
     
-  # - name: KSC
-  #   data_path: "data/KSC/KSC.mat"
-  #   label_path: "data/KSC/KSC_gt.mat"
-  #   model_path: "checkpoints/KSC"
-  #   figure_dir: "outputs/KSC"
+  - name: KSC
+    data_path: "data/KSC/KSC.mat"
+    label_path: "data/KSC/KSC_gt.mat"
+    model_path: "checkpoints/KSC"
+    figure_dir: "outputs/KSC"
 
 patch_size: 5
 batch_size: 32
 learning_rate: 0.001
 max_epochs: 1500
 n_components: 30
+model_epochs_file: "configs/model_epochs.yaml"

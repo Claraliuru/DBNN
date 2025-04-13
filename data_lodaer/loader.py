@@ -4,11 +4,16 @@ import numpy  as np
 import torch
 from torch.utils.data import DataLoader, Dataset
 from sklearn.preprocessing import MinMaxScaler
+from sklearn.decomposition import PCA
 
 class HSI(Dataset):
-    def __init__(self, data_path, label_path, patch_size=5, train=True, train_split=0.1):
+    def __init__(self, data_path, label_path, patch_size=5, train=True, train_split=0.1, ifpca=False, pca_components=50):
        # 加载数据集
-       self.data, self.label = self.load_data(data_path, label_path)
+       if ifpca:
+           self.data, self.label = self.load_data(data_path, label_path, pca_components)
+       else:
+           self.data, self.label = self.load_data(data_path, label_path)
+       
        self.patch_size = patch_size
        self.train = train
        self.train_split = train_split
@@ -18,7 +23,7 @@ class HSI(Dataset):
        self.num_channels = self.data.shape[2]
        self.num_classes = np.unique(self.label).size
 
-    def load_data(self, data_path, label_path):
+    def load_data(self, data_path, label_path, ifpca=False, pca_components=None):
         # 读取.mat文件
         data = sio.loadmat(data_path)
         label = sio.loadmat(label_path)
@@ -36,6 +41,12 @@ class HSI(Dataset):
         data = data.reshape(-1, channels)
         data = scaler.fit_transform(data)
         data = data.reshape(height, width, channels)
+        if ifpca:
+            # PCA降维
+            pca = PCA(n_components=pca_components)
+            data = data.reshape(-1, channels)  # 展平数据
+            data_pca = pca.fit_transform(data)  # 降维
+            data_pca = data_pca.reshape(height, width, pca_components)  # 恢复数据形状
 
         self.label_shape = label.shape
         return data, label

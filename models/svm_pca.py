@@ -1,147 +1,125 @@
-# models/svm_pca.py
 import numpy as np
-import joblib
 from sklearn.decomposition import PCA
 from sklearn.svm import SVC
-from sklearn.metrics import accuracy_score, cohen_kappa_score
-from sklearn.preprocessing import StandardScaler
-from sklearn.model_selection import train_test_split
+from sklearn.metrics import accuracy_score, confusion_matrix, cohen_kappa_score
+import joblib
+import os
 
 class SVMPCA:
-    def __init__(self, n_components=30, C=1.0, kernel='rbf', gamma='scale', random_state=None):
+    def __init__(self, n_components=30, background_value=0):
         """
-        PCA + SVM 高光谱分类模型
-        
-        参数:
-            n_components: PCA降维后的维度
-            C: SVM的惩罚参数
-            kernel: SVM核函数类型 ('linear', 'rbf', 'poly'等)
-            gamma: 核函数系数 ('scale', 'auto'或数值)
-            random_state: 随机种子
+        初始化 SVM+PCA 模型
+        :param n_components: PCA 降维后的维度
+        :param background_value: 背景标签值
         """
         self.n_components = n_components
-        self.C = C
-        self.kernel = kernel
-        self.gamma = gamma
-        self.random_state = random_state
-        
-        self.pca = PCA(n_components=n_components, random_state=random_state)
-        self.scaler = StandardScaler()
-        self.svm = SVC(C=C, kernel=kernel, gamma=gamma, random_state=random_state)
-    
+        self.background_value = background_value
+        self.pca = PCA(n_components=n_components)
+        self.svm = SVC(kernel='rbf', C=1.0, gamma='scale')
+
     def train(self, data, labels):
         """
-        训练PCA+SVM模型
-        
-        参数:
-            data: 高光谱数据 (n_samples, n_features)
-            labels: 对应标签 (n_samples,)
+        训练 SVM+PCA 模型
+        :param data: 高光谱数据 (H, W, C) 或 (N, H, W, C)
+        :param labels: 标签数据 (H, W) 或 (N, H, W)
         """
-        # 将数据展平为2D (如果是3D空间数据)
-        if data.ndim > 2:
-            original_shape = data.shape
-            data = data.reshape(-1, original_shape[-1])
-            labels = labels.flatten()
+        # 处理输入数据形状
+        if data.ndim == 3:  # 单幅图像 (H, W, C)
+            data = data[np.newaxis, ...]  # 变为 (1, H, W, C)
+            labels = labels[np.newaxis, ...]  # 变为 (1, H, W)
         
-        # 移除背景类别(0)的样本
-        mask = labels != 0
-        data = data[mask]
-        labels = labels[mask]
+        # 展平数据 (N*H*W, C)
+        data_flat = data.reshape(-1, data.shape[-1])
         
-        # 数据标准化
-        data = self.scaler.fit_transform(data)
+        # 展平标签并过滤背景
+        labels_flat = labels.flatten()
+        mask = labels_flat != self.background_value
+        data_flat = data_flat[mask]
+        labels_flat = labels_flat[mask]
         
-        # PCA降维
-        pca_features = self.pca.fit_transform(data)
+        # PCA 降维
+        self.pca.fit(data_flat)
+        data_pca = self.pca.transform(data_flat)
         
-        # 训练SVM
-        self.svm.fit(pca_features, labels)
-    
+        # 训练 SVM
+        self.svm.fit(data_pca, labels_flat)
+
     def predict(self, data):
         """
-        预测分类结果，并保持背景区域为0
-        
-        参数:
-            data: 高光谱数据 (可以是2D或3D)
-        
-        返回:
-            预测的类别标签 (与输入空间形状相同)，背景保持为0
+        预测数据
+        :param data: 高光谱数据 (H, W, C) 或 (N, H, W, C)
+        :return: 预测标签 (H, W) 或 (N, H, W)
         """
         original_shape = data.shape
-        is_3d = data.ndim > 2
-        
-        # 保存原始背景掩膜
-        if is_3d:
-            # 对于3D数据，计算第一个波段的0值区域作为背景
-            background_mask = (data[..., 0] == 0)  # 假设背景在第一个波段为0
-            data_2d = data.reshape(-1, original_shape[-1])
+        if data.ndim == 3:  # 单幅图像
+            data = data[np.newaxis, ...]  # 变为 (1, H, W, C)
+            need_squeeze = True
         else:
-            background_mask = (data[..., 0] == 0)  # 对于2D数据
-            data_2d = data.copy()
+            need_squeeze = False
         
-        # 标准化 + PCA + SVM预测
-        data_2d = self.scaler.transform(data_2d)
-        pca_features = self.pca.transform(data_2d)
-        pred = self.svm.predict(pca_features)
+        # 保存原始背景掩膜（假设第一个波段为0是背景）
+        background_mask = (data[..., 0] == 0)
+        
+        # 展平数据 (N*H*W, C)
+        data_flat = data.reshape(-1, data.shape[-1])
+        
+        # PCA 降维
+        data_pca = self.pca.transform(data_flat)
+        
+        # SVM 预测
+        pred_flat = self.svm.predict(data_pca)
         
         # 恢复形状
-        if is_3d:
-            pred = pred.reshape(original_shape[:-1])
-        else:
-            pred = pred.reshape(original_shape[:1])
+        pred = pred_flat.reshape(data.shape[:-1])
         
-        # 将背景区域强制设为0
-        pred[background_mask] = 0
+        # 恢复背景区域
+        pred[background_mask] = self.background_value
+        
+        if need_squeeze:
+            pred = pred.squeeze(0)
         
         return pred
     
     def evaluate(self, true_labels, pred_labels):
-        """
-        评估模型性能
-        
-        参数:
-            true_labels: 真实标签
-            pred_labels: 预测标签
-            
-        返回:
-            OA (总体精度), AA (平均精度), kappa (kappa系数)
-        """
-        # 展平并移除背景类别
-        true_labels = true_labels.flatten()
-        pred_labels = pred_labels.flatten()
-        mask = true_labels != 0
-        
-        true_labels = true_labels[mask]
-        pred_labels = pred_labels[mask]
-        
-        # 计算OA
+        true_labels = np.array(true_labels).flatten()
+        pred_labels = np.array(pred_labels).flatten()
+
+        # 计算整体精度 OA
         OA = accuracy_score(true_labels, pred_labels)
-        
-        # 计算AA (每个类别的平均精度)
-        unique_classes = np.unique(true_labels)
-        AA = 0
-        for cls in unique_classes:
-            cls_mask = true_labels == cls
-            if np.sum(cls_mask) > 0:
-                AA += accuracy_score(true_labels[cls_mask], pred_labels[cls_mask])
-        AA /= len(unique_classes)
-        
-        # 计算kappa系数
+
+        # 计算每类精度，再取平均 AA
+        num_classes = len(np.unique(true_labels))
+        class_acc = []
+        for c in range(num_classes):
+            idx = (true_labels == c)
+            if np.sum(idx) == 0:
+                continue
+            acc = accuracy_score(true_labels[idx], pred_labels[idx])
+            class_acc.append(acc)
+        AA = np.mean(class_acc)
+
+        # 计算 Kappa
         kappa = cohen_kappa_score(true_labels, pred_labels)
-        
+
         return OA, AA, kappa
     
     def save_model(self, path):
-        """保存模型到文件"""
+        """保存模型（兼容.pth格式）"""
+        os.makedirs(os.path.dirname(path), exist_ok=True)
         joblib.dump({
             'pca': self.pca,
-            'scaler': self.scaler,
-            'svm': self.svm
+            'svm': self.svm,
+            'config': {
+                'n_components': self.n_components,
+                'background_value': self.background_value
+            }
         }, path)
     
     def load_model(self, path):
-        """从文件加载模型"""
+        """加载模型"""
         model_dict = joblib.load(path)
         self.pca = model_dict['pca']
-        self.scaler = model_dict['scaler']
         self.svm = model_dict['svm']
+        if 'config' in model_dict:
+            self.n_components = model_dict['config'].get('n_components', 30)
+            self.background_value = model_dict['config'].get('background_value', 0)

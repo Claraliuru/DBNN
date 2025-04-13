@@ -61,9 +61,10 @@ class Visualize:
         plt.title("(b) {title}", y=-0.1)
         plt.axis('off')
 
-        plt.show()
+        # 保存图像
+        # plt.show()
 
-    def visualize_comparison(self, ground_truth, model_maps:dict):
+    def visualize_comparison(self, ground_truth, model_maps:dict, save_path=None):
         """
         真值图 + 多个模型的分类图
         model_maps: dict，键为模型名，值为分类图（H, W）
@@ -71,25 +72,30 @@ class Visualize:
         num_models = len(model_maps)
         total = num_models + 1 # 模型数加真值图
 
-        plt.figure(figsize=(6 * total, 6))
+        plt.figure(figsize=(6 * total, 5 if total <=3 else 10))
 
-        if total > 3:
-            row = 2
-        else:
-            row = 1
-
+        row = 2 if total > 3 else 1
+        col = (total + 1) // 2 if row == 2 else total
+ 
         alphabet = list(string.ascii_lowercase)
+
         # 真值图
-        plt.subplot(row, total, 1)
+        plt.subplot(row, col, 1)
         plt.imshow(ground_truth, cmap='jet', vmin=0, vmax=np.max(ground_truth))
         plt.title(f"({alphabet[0]})", y=-0.1)
         plt.axis('off')
 
         # 模型结果
-        for i, (_,cls_map) in enumerate(model_maps.items(), start=2):
-            plt.subplot(row, total, i)
+        for i, (model_name,cls_map) in enumerate(model_maps.items(), start=2):
+            plt.subplot(row, col, i)
             plt.imshow(cls_map, cmap='jet', vmin=0, vmax=np.max(ground_truth))
-            plt.title(f"({alphabet[i-1]})", y=-0.1)
+            plt.title(f"({alphabet[i-1]}) {model_name}", y=-0.1)
             plt.axis('off')
-        
-        plt.show()    
+
+        if save_path:
+            plt.subplots_adjust(hspace=0.2, wspace=0.05)  # 设置固定纵向/横向间距
+            plt.savefig(save_path)
+        else:
+            plt.subplots_adjust(hspace=0.2, wspace=0.05)  # 即使不保存也调整间距
+
+        # plt.show()    
