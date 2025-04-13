@@ -1,0 +1,29 @@
+models:
+  - name: DBNN
+  #- name: SVMPCA
+  # - name: DBNN_gf
+
+datasets:
+  - name: IP
+    data_path: "data/IP/IP.mat"
+    label_path: "data/IP/IP_gt.mat"
+    model_path: "checkpoints/IP"
+    figure_dir: "outputs/IP"
+
+  - name: PU
+    data_path: "data/PU/PU.mat"
+    label_path: "data/PU/PU_gt.mat"
+    model_path: "checkpoints/PU"
+    figure_dir: "outputs/PU"
+    
+  - name: KSC
+    data_path: "data/KSC/KSC.mat"
+    label_path: "data/KSC/KSC_gt.mat"
+    model_path: "checkpoints/KSC"
+    figure_dir: "outputs/KSC"
+
+patch_size: 5
+batch_size: 32
+learning_rate: 0.001
+max_epochs: 10
+n_component: 30
