@@ -53,26 +53,34 @@ class MultiScaleConv2D(nn.Module):
 
 # 空间分支
 class SpatialBranch(nn.Module):
-    def __init__(self, in_channels):
+    def __init__(self, in_channels, embed_dim=128, num_heads=4, num_layers=2):
         super().__init__()
         self.msconv1 = MultiScaleConv2D(in_channels, 32)
         self.msconv2 = MultiScaleConv2D(32, 64)
-        self.msconv3 = MultiScaleConv2D(64, 128)
-        self.transformer = nn.TransformerEncoder(
-            nn.TransformerEncoderLayer(d_model=128, nhead=4, batch_first=True), num_layers=2
+        self.msconv3 = MultiScaleConv2D(64, embed_dim)  # 输出维度要等于 Transformer 输入维度
+
+        encoder_layer = nn.TransformerEncoderLayer(
+            d_model=embed_dim, nhead=num_heads, batch_first=True
         )
-        self.global_pool = nn.AdaptiveAvgPool2d(1)
+        self.transformer = nn.TransformerEncoder(encoder_layer, num_layers=num_layers)
 
     def forward(self, x):
-        x = self.msconv1(x)
-        x = self.msconv2(x)
-        x = self.msconv3(x)
-        x = self.global_pool(x)            # (B, 128, 1, 1)
-        x = x.view(x.size(0), 1, -1)       # (B, 1, 128)
-        x = self.transformer(x)           # Transformer expects (B, Seq, D)
-        return x.squeeze(1)               # (B, 128)
+        # x: [B, C, H, W]
+        x = self.msconv1(x)     # [B, 32, H, W]
+        x = self.msconv2(x)     # [B, 64, H, W]
+        x = self.msconv3(x)     # [B, 128, H, W]
 
-# 最终的双分支分类网络（不含注意力、不含Dropout）
+        B, C, H, W = x.shape
+        x = x.view(B, C, H * W)     # [B, C, H*W]
+        x = x.permute(0, 2, 1)      # [B, H*W, C]  -> token 序列
+
+        x = self.transformer(x)     # [B, H*W, C] -> 处理空间依赖
+
+        x = x.mean(dim=1)           # 所有 token 平均池化 -> [B, C]
+        return x
+
+
+# 最终的双分支分类网络
 class DBNN_noatt(nn.Module):
     def __init__(self, in_channels, num_classes):
         super().__init__()

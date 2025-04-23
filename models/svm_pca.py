@@ -84,6 +84,10 @@ class SVMPCA:
         true_labels = np.array(true_labels).flatten()
         pred_labels = np.array(pred_labels).flatten()
 
+        mask = true_labels != self.background_value
+        true_labels = true_labels[mask]
+        pred_labels = pred_labels[mask]
+
         # 计算整体精度 OA
         OA = accuracy_score(true_labels, pred_labels)
 

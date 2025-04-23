@@ -7,48 +7,47 @@ from sklearn.preprocessing import MinMaxScaler
 from sklearn.decomposition import PCA
 
 class HSI(Dataset):
-    def __init__(self, data_path, label_path, patch_size=5, train=True, train_split=0.1, ifpca=False, pca_components=50):
-       # 加载数据集
-       if ifpca:
-           self.data, self.label = self.load_data(data_path, label_path, pca_components)
-       else:
-           self.data, self.label = self.load_data(data_path, label_path)
+    def __init__(self, data_path, label_path, patch_size=5, train=True, train_split=0.1, use_pca=False, n_components=10):
+        # 加载数据集
+        self.data, self.label = self.load_data(data_path, label_path, use_pca, n_components)
        
-       self.patch_size = patch_size
-       self.train = train
-       self.train_split = train_split
+        self.patch_size = patch_size
+        self.train = train
+        self.train_split = train_split
 
-       # 数据集划分
-       self.train_data, self.test_data, self.train_label, self.test_label = self.split_data()
-       self.num_channels = self.data.shape[2]
-       self.num_classes = np.unique(self.label).size
+        # 数据集划分
+        self.train_data, self.test_data, self.train_label, self.test_label = self.split_data()
+        self.num_channels = self.data.shape[2]
+        self.num_classes = np.unique(self.label).size
 
-    def load_data(self, data_path, label_path, ifpca=False, pca_components=None):
+    def load_data(self, data_path, label_path, use_pca, n_components):
         # 读取.mat文件
         data = sio.loadmat(data_path)
         label = sio.loadmat(label_path)
 
         # 解析数据
-        data_key = list(data.keys())[-1] # 获取数据键
+        data_key = list(data.keys())[-1]  # 获取数据键
         label_key = list(label.keys())[-1]
 
-        data = data[data_key].astype(np.float32) # 提取数据并转换为float32类型
+        data = data[data_key].astype(np.float32)  # 提取数据并转换为float32类型
         label = label[label_key].astype(np.int64)
 
         # 归一化数据
-        scaler = MinMaxScaler() #创建归一化器
+        scaler = MinMaxScaler()  # 创建归一化器
         height, width, channels = data.shape
         data = data.reshape(-1, channels)
         data = scaler.fit_transform(data)
         data = data.reshape(height, width, channels)
-        if ifpca:
-            # PCA降维
-            pca = PCA(n_components=pca_components)
-            data = data.reshape(-1, channels)  # 展平数据
-            data_pca = pca.fit_transform(data)  # 降维
-            data_pca = data_pca.reshape(height, width, pca_components)  # 恢复数据形状
+
+        # PCA降维
+        if use_pca:
+            pca = PCA(n_components=n_components)  # 使用n_components指定降维后的维度
+            data = data.reshape(-1, channels)  # 先将数据展平
+            data = pca.fit_transform(data)  # 进行PCA降维
+            data = data.reshape(height, width, n_components)  # 恢复成原始数据的尺寸（高，宽，降维后的通道数）
 
         self.label_shape = label.shape
+
         return data, label
 
     def split_data(self):
@@ -56,11 +55,12 @@ class HSI(Dataset):
 
         # 获取非零标签的索引
         indices = np.array(np.nonzero(self.label)).T
+        indices = indices[self.label[tuple(indices.T)] != 0]
         num_samples = indices.shape[0]
 
         # 生成随机排列
-        perm = np.random.permutation(num_samples) # 生成随机排列
-        train_size = int(num_samples * self.train_split) # 计算训练集大小
+        perm = np.random.permutation(num_samples)  # 生成随机排列
+        train_size = int(num_samples * self.train_split)  # 计算训练集大小
 
         # 划分索引
         train_indices = indices[perm[:train_size], :]
@@ -88,7 +88,7 @@ class HSI(Dataset):
         # 检查patch是否有效
         if x_min == x_max or y_min == y_max:
             print(f"Warning: Invalid patch size as ({x}, {y}): x_min={x_min}, x_max={x_max}, y_min={y_min}, y_max={y_max}")
-            return np.zeros((self.patch_size, self.patch_size, channels), dtype=np.float32) # 返回零矩阵
+            return np.zeros((self.patch_size, self.patch_size, channels), dtype=np.float32)  # 返回零矩阵
         
         # 提取patch
         patch = self.data[x_min:x_max, y_min:y_max, :]
@@ -107,7 +107,7 @@ class HSI(Dataset):
     
     def compute_spatial_feature(self, inputs):
         # 根据需求计算spatial特征，比如取均值，卷积
-        spatial_feature = torch.mean(inputs, dim=0, keepdim=True) # 取均值
+        spatial_feature = torch.mean(inputs, dim=0, keepdim=True)  # 取均值
         return spatial_feature
     
     def __getitem__(self, index):
@@ -121,19 +121,15 @@ class HSI(Dataset):
             spectral_data = torch.tensor(self.test_data[index]).permute(2, 0, 1)
             spatial_data = torch.tensor(self.test_data[index]).permute(2, 0, 1)
             label = torch.tensor(self.test_label[index])
-
-        #确保不返回背景类
-        if label == 0:
-            return None
     
         return spectral_data, spatial_data, label
-        
+
     @staticmethod
-    def get_dataloder(data_path, label_path, batch_size=32, patch_size=5, train=True):
+    def get_dataloader(data_path, label_path, batch_size=32, patch_size=5, train=True, use_pca=False, n_components=10):
         # 静态方法：创建数据加载器
-        dataset = HSI(data_path, label_path, patch_size, train)
+        dataset = HSI(data_path, label_path, patch_size, train, use_pca=use_pca, n_components=n_components)
         return DataLoader(
             dataset, 
             batch_size=batch_size, 
             shuffle=True,
-            )
+        )

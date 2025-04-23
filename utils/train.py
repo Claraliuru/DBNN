@@ -5,6 +5,7 @@ from utils.helper import save_model
 import os
 
 def train(config, device, train_loader, model, model_name, model_path):
+    model_suffix = "_PCA" if config["use_pca"] else ""
     # 创建模型保存目录
     save_dir = os.path.join(model_path, model_name)
     os.makedirs(save_dir, exist_ok=True)
@@ -64,7 +65,7 @@ def train(config, device, train_loader, model, model_name, model_path):
 
         # 保存最优模型或者每10轮保存一次
         if epoch % 10 == 0 and avg_loss < min_loss:
-            save_model(model, os.path.join(save_dir, f"{model_name}_epoch_{epoch}.pth"))
+            save_model(model, os.path.join(save_dir, f"{model_name}{model_suffix}_epoch_{epoch}.pth"))
             if avg_loss < min_loss:
                 min_loss = avg_loss
         

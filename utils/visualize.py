@@ -51,13 +51,13 @@ class Visualize:
 
         # 真值图
         plt.subplot(1, 2, 1)
-        plt.imshow(ground_truth, cmap='jet', vmin=0, vmax=np.max(ground_truth))
+        plt.imshow(ground_truth, cmap='jet', vmin=1, vmax=np.max(ground_truth))
         plt.title("(a) Grpund Truth", y=-0.1)
         plt.axis('off')
 
         # 分类结果图
         plt.subplot(1, 2, 2)
-        plt.imshow(classification_map, cmap='jet', vmin=0, vmax=np.max(ground_truth))
+        plt.imshow(classification_map, cmap='jet', vmin=1, vmax=np.max(ground_truth))
         plt.title("(b) {title}", y=-0.1)
         plt.axis('off')
 
@@ -72,10 +72,10 @@ class Visualize:
         num_models = len(model_maps)
         total = num_models + 1 # 模型数加真值图
 
-        plt.figure(figsize=(6 * total, 5 if total <=3 else 10))
-
         row = 2 if total > 3 else 1
         col = (total + 1) // 2 if row == 2 else total
+        
+        plt.figure(figsize=(6 * col, 5 * row))
  
         alphabet = list(string.ascii_lowercase)
 
@@ -89,13 +89,13 @@ class Visualize:
         for i, (model_name,cls_map) in enumerate(model_maps.items(), start=2):
             plt.subplot(row, col, i)
             plt.imshow(cls_map, cmap='jet', vmin=0, vmax=np.max(ground_truth))
-            plt.title(f"({alphabet[i-1]}) {model_name}", y=-0.1)
+            plt.title(f"({alphabet[i-1]})", y=-0.1)
             plt.axis('off')
 
         if save_path:
-            plt.subplots_adjust(hspace=0.2, wspace=0.05)  # 设置固定纵向/横向间距
+            plt.subplots_adjust(hspace=0.1, wspace=0.1)  # 设置固定纵向/横向间距
             plt.savefig(save_path)
         else:
-            plt.subplots_adjust(hspace=0.2, wspace=0.05)  # 即使不保存也调整间距
+            plt.subplots_adjust(hspace=0.1, wspace=0.1)  # 即使不保存也调整间距
 
         # plt.show()    
