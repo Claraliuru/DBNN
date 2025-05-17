@@ -1,129 +1,147 @@
+"""对比模型：SVM+PCA"""
+
+import yaml
+import scipy.io as sio
 import numpy as np
 from sklearn.decomposition import PCA
 from sklearn.svm import SVC
-from sklearn.metrics import accuracy_score, confusion_matrix, cohen_kappa_score
-import joblib
+from sklearn.metrics import accuracy_score, cohen_kappa_score, classification_report
+import matplotlib.pyplot as plt
 import os
 
-class SVMPCA:
-    def __init__(self, n_components=30, background_value=0):
-        """
-        初始化 SVM+PCA 模型
-        :param n_components: PCA 降维后的维度
-        :param background_value: 背景标签值
-        """
-        self.n_components = n_components
-        self.background_value = background_value
-        self.pca = PCA(n_components=n_components)
-        self.svm = SVC(kernel='rbf', C=1.0, gamma='scale')
+def load_hsi_data(data_path, label_path):
+    # 数据加载
+    data = sio.loadmat(data_path) # 加载数据
+    label = sio.loadmat(label_path) # 加载标签
 
-    def train(self, data, labels):
-        """
-        训练 SVM+PCA 模型
-        :param data: 高光谱数据 (H, W, C) 或 (N, H, W, C)
-        :param labels: 标签数据 (H, W) 或 (N, H, W)
-        """
-        # 处理输入数据形状
-        if data.ndim == 3:  # 单幅图像 (H, W, C)
-            data = data[np.newaxis, ...]  # 变为 (1, H, W, C)
-            labels = labels[np.newaxis, ...]  # 变为 (1, H, W)
-        
-        # 展平数据 (N*H*W, C)
-        data_flat = data.reshape(-1, data.shape[-1])
-        
-        # 展平标签并过滤背景
-        labels_flat = labels.flatten()
-        mask = labels_flat != self.background_value
-        data_flat = data_flat[mask]
-        labels_flat = labels_flat[mask]
-        
-        # PCA 降维
-        self.pca.fit(data_flat)
-        data_pca = self.pca.transform(data_flat)
-        
-        # 训练 SVM
-        self.svm.fit(data_pca, labels_flat)
+    data_key = list(data.keys())[-1] # 取出数据键
+    label_key = list(label.keys())[-1] # 取出标签键
 
-    def predict(self, data):
-        """
-        预测数据
-        :param data: 高光谱数据 (H, W, C) 或 (N, H, W, C)
-        :return: 预测标签 (H, W) 或 (N, H, W)
-        """
-        original_shape = data.shape
-        if data.ndim == 3:  # 单幅图像
-            data = data[np.newaxis, ...]  # 变为 (1, H, W, C)
-            need_squeeze = True
-        else:
-            need_squeeze = False
-        
-        # 保存原始背景掩膜（假设第一个波段为0是背景）
-        background_mask = (data[..., 0] == 0)
-        
-        # 展平数据 (N*H*W, C)
-        data_flat = data.reshape(-1, data.shape[-1])
-        
-        # PCA 降维
-        data_pca = self.pca.transform(data_flat)
-        
-        # SVM 预测
-        pred_flat = self.svm.predict(data_pca)
-        
-        # 恢复形状
-        pred = pred_flat.reshape(data.shape[:-1])
-        
-        # 恢复背景区域
-        pred[background_mask] = self.background_value
-        
-        if need_squeeze:
-            pred = pred.squeeze(0)
-        
-        return pred
+    data = data[data_key] # 获取实际数据
+    labels = label[label_key] # 获取实际标签
+
+    return data.astype(np.float32), labels.astype(np.int64) # 转换为适当类型
+
+def apply_pca(data, n_components):
+    h, w, c = data.shape # 获取图像高宽和通道数
+    reshaped = data.reshape(-1, c) # 变为二维 [N, C]，N=H×W
+    pca = PCA(n_components=n_components) # 创建 PCA 对象
+    reduced = pca.fit_transform(reshaped) # 进行 PCA 降维
+    return reduced.reshape(h, w, n_components) # 恢复为三维 [H, W, C']
+
+def split_train_test(X, y, train_split=0.1):
+    np.random.seed(0) # 固定随机种子，便于复现
+    h, w, c = X.shape
+    X_flat = X.reshape(-1, c) # 拉平成 [N, C]
+    y_flat = y.flatten() # 标签也拉平成一维
+
+    valid_indices = np.where(y_flat > 0)[0] # 找到所有有标注的位置（非0）
+    num_train = int(train_split * len(valid_indices)) # 训练样本数量
+    perm = np.random.permutation(valid_indices) # 随机打乱索引
+    train_idx = perm[:num_train] # 训练索引
+    test_idx = perm[num_train:] # 测试索引
+
+    X_train, y_train = X_flat[train_idx], y_flat[train_idx] # 划分训练集
+    X_test, y_test = X_flat[test_idx], y_flat[test_idx] # 划分测试集
     
-    def evaluate(self, true_labels, pred_labels):
-        true_labels = np.array(true_labels).flatten()
-        pred_labels = np.array(pred_labels).flatten()
+    return X_train, y_train, X_test, y_test, y_flat, test_idx
 
-        mask = true_labels != self.background_value
-        true_labels = true_labels[mask]
-        pred_labels = pred_labels[mask]
+def classify_svm(X_train, y_train, X_test):
+    clf = SVC(C=100, gamma='scale', kernel='rbf', class_weight='balanced') # 初始化支持向量机（RBF核）
+    clf.fit(X_train, y_train) # 拟合训练数据
+    preds = clf.predict(X_test) # 预测测试数据
+    return clf, preds
 
-        # 计算整体精度 OA
-        OA = accuracy_score(true_labels, pred_labels)
+def evaluate(preds, y_test):
+    oa = accuracy_score(y_test, preds) # OA
+    kappa = cohen_kappa_score(y_test, preds) # Kappa 系数
+    report = classification_report(y_test, preds, digits=4, output_dict=True) # 每类的详细报告
+    aa = np.mean([report[str(label)]['recall'] for label in np.unique(y_test)]) # Average Accuracy
+    return oa, aa, kappa
 
-        # 计算每类精度，再取平均 AA
-        num_classes = len(np.unique(true_labels))
-        class_acc = []
-        for c in range(num_classes):
-            idx = (true_labels == c)
-            if np.sum(idx) == 0:
-                continue
-            acc = accuracy_score(true_labels[idx], pred_labels[idx])
-            class_acc.append(acc)
-        AA = np.mean(class_acc)
+def visualize_result(y_pred_all, gt_shape, save_path=None):
+    plt.figure(figsize=(6, 6))
+    plt.imshow(y_pred_all.reshape(gt_shape), cmap='jet') # 显示预测图
+    plt.axis('off')  # 关闭坐标轴
+    if save_path:
+        os.makedirs(os.path.dirname(save_path), exist_ok=True) # 创建输出目录
+        plt.savefig(save_path, bbox_inches='tight') # 保存图像
+    plt.close()
 
-        # 计算 Kappa
-        kappa = cohen_kappa_score(true_labels, pred_labels)
+def get_dataset_config(dataset_name, config):
+    """获取指定数据集配置"""
+    for ds in config["datasets"]:
+        if ds["name"] == dataset_name:
+            return ds # 找到匹配的数据集配置
+    raise ValueError(f"数据集{dataset_name} 不存在于配置中")
 
-        return OA, AA, kappa
-    
-    def save_model(self, path):
-        """保存模型（兼容.pth格式）"""
-        os.makedirs(os.path.dirname(path), exist_ok=True)
-        joblib.dump({
-            'pca': self.pca,
-            'svm': self.svm,
-            'config': {
-                'n_components': self.n_components,
-                'background_value': self.background_value
-            }
-        }, path)
-    
-    def load_model(self, path):
-        """加载模型"""
-        model_dict = joblib.load(path)
-        self.pca = model_dict['pca']
-        self.svm = model_dict['svm']
-        if 'config' in model_dict:
-            self.n_components = model_dict['config'].get('n_components', 30)
-            self.background_value = model_dict['config'].get('background_value', 0)
+def main():
+    with open("configs/config.yaml", "r", encoding="Utf-8") as f:
+        config = yaml.safe_load(f)
+    for dataset in config["datasets"]:
+        dataset_name = dataset["name"]
+        dataset_config = get_dataset_config(dataset_name, config)
+        print(f"\n=== 当前数据集：{dataset_name} ===")
+
+        data_path = dataset_config["data_path"]
+        label_path = dataset_config["label_path"]
+        
+        data, labels = load_hsi_data(data_path, label_path)
+        data_pca = apply_pca(data, dataset_config["n_components"])
+
+        oa_list, aa_list, kappa_list = [], [], []
+
+        for run in range(5):
+            print(f"\n-- 第 {run+1} 次运行 --")
+            X_train, y_train, X_test, y_test, y_all, test_idx = split_train_test(data_pca, labels, train_split=dataset_config["train_split"])
+
+            _, preds = classify_svm(X_train, y_train, X_test)
+            oa, aa, kappa = evaluate(preds, y_test)
+
+            oa_list.append(oa)
+            aa_list.append(aa)
+            kappa_list.append(kappa)
+            
+            model_name = "SVM"
+            # 只保存第一次的可视化图
+            if run == 0:
+                h, w = labels.shape
+                y_pred_all = np.zeros(h * w, dtype=int)
+                y_pred_all[test_idx] = preds
+                visualize_result(y_pred_all, labels.shape,
+                                 save_path=f"{dataset_config['figure_dir']}/svm_pca.png")
+                result = {
+                    "train_split": dataset_config["train_split"],
+                    "weight_decay": dataset_config["weight_decay"],
+                    "OA": float(oa),
+                    "AA": float(aa),
+                    "Kappa": float(kappa),
+                }
+                # 尝试从已有文件中读取数据
+                if os.path.exists(config["model_file"]):
+                    with open(config["model_file"], "r", encoding="utf-8") as file:
+                        model_data = yaml.safe_load(file) or {}
+                else:
+                    model_data = {}
+
+                # 确保结构存在
+                if dataset_name not in model_data:
+                    model_data[dataset_name] = {}
+                if model_name not in model_data[dataset_name]:
+                    model_data[dataset_name][model_name] = []
+
+                # 添加新结果
+                model_data[dataset_name][model_name].append(result)
+
+                # 写回文件
+                with open(config["model_file"], "w", encoding="utf-8") as file:
+                    yaml.dump(model_data, file, allow_unicode=True)
+            print(f"[SVM on {dataset_name}]:\nOA: {oa:.4f}, AA: {aa:.4f}, Kappa: {kappa:.4f}")
+
+        print("\n--- 五次运行的平均结果 ---")
+        print(f"平均 OA: {np.mean(oa_list):.4f}")
+        print(f"平均 AA: {np.mean(aa_list):.4f}")
+        print(f"平均 Kappa: {np.mean(kappa_list):.4f}")
+
+if __name__ == "__main__":
+    main()

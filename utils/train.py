@@ -4,16 +4,40 @@ import torch.optim as optim
 from utils.helper import save_model
 import os
 
-def train(config, device, train_loader, model, model_name, model_path):
+class FocalLoss(nn.Module):
+    # FocalLoss类
+    def __init__(self, alpha=1.0, gamma=2.0, reduction='mean'):
+        super(FocalLoss, self).__init__()
+        self.alpha = alpha # 控制正负样本损失权重（如前景/背景）
+        self.gamma = gamma # 控制对容易样本惩罚的强度（gamma 越大，容易样本权重越小）
+        self.reduction = reduction # 输出损失的聚合方式：mean, sum, 或 none
+        self.ce_loss = nn.CrossEntropyLoss(reduction='none') # 基础交叉熵损失，不进行聚合
+
+    def forward(self, inputs, targets):
+        ce_loss = self.ce_loss(inputs, targets) # 对每个样本计算交叉熵损失
+        pt = torch.exp(-ce_loss)  # 得到预测概率 pt = softmax(logit)[target]
+        focal_loss = self.alpha * (1 - pt) ** self.gamma * ce_loss # 应用 Focal Loss 公式
+
+        if self.reduction == 'mean':
+            return focal_loss.mean() # 对所有样本取平均
+        elif self.reduction == 'sum':
+            return focal_loss.sum() # 对所有样本求和
+        else:
+            return focal_loss # 返回每个样本的损失值
+
+def train(config, datasets_cfg, device, train_loader, model, model_name, model_path):
     model_suffix = "_PCA" if config["use_pca"] else ""
     # 创建模型保存目录
     save_dir = os.path.join(model_path, model_name)
     os.makedirs(save_dir, exist_ok=True)
+    weight_decay= datasets_cfg["weight_decay"]
+    # if model_name is not "MSRANet_TrGF":
+    # # 损失函数与优化器
+    #     criterion = nn.CrossEntropyLoss()    
+    criterion = FocalLoss(alpha=1.0, gamma=2.0)  # 你可以根据需要修改 alpha/gamma
+    optimizer = optim.Adam(model.parameters(), lr=config["learning_rate"], weight_decay=float(weight_decay))
 
-    # 损失函数与优化器
-    criterion = nn.CrossEntropyLoss()
-    optimizer = optim.Adam(model.parameters(), lr=config["learning_rate"])
-
+    
     # 初始化
     model = model.to(device)
     model.train()
@@ -21,8 +45,8 @@ def train(config, device, train_loader, model, model_name, model_path):
     min_loss = float("inf")
     max_epochs = config["max_epochs"]
     learning_rate = config["learning_rate"]
-    
-    print(f"[Train Start] learning_rate: {learning_rate}.")
+    train_split = datasets_cfg["train_split"]
+    print(f"[Train Start] learning_rate: {learning_rate}, train_split: {train_split},weight_decay: {weight_decay}.")
 
     while epoch < max_epochs:
         running_loss = 0.0
@@ -73,4 +97,5 @@ def train(config, device, train_loader, model, model_name, model_path):
             break
         
     print(f"[Train Done] Final loss: {avg_loss:.4f}, Accuracy: {accuuracy:.2f}%")
+
     return epoch

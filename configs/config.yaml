@@ -1,36 +1,64 @@
-models:
-  - name: Spectral3DCNN #3DCNN
-  - name: SimpleDBNN # DNN
-  - name: Simple_Resnet #ReSDBNN
-  - name: DBNN_multinn # DBNN-multinn
-  - name: DBNN_noTrans
-  - name: DBNN_noatt
-  - name: DBNN_3x3
-  - name: DBNN
-  - name: DBNN_gf
-datasets:
-  - name: IP
-    data_path: "data/IP/IP.mat"
-    label_path: "data/IP/IP_gt.mat"
-    model_path: "checkpoints/IP"
-    figure_dir: "outputs/IP"
-
-  # - name: PU
-  #   data_path: "data/PU/PU.mat"
-  #   label_path: "data/PU/PU_gt.mat"
-  #   model_path: "checkpoints/PU"
-  #   figure_dir: "outputs/PU"
-    
-  # - name: KSC
-  #   data_path: "data/KSC/KSC.mat"
-  #   label_path: "data/KSC/KSC_gt.mat"
-  #   model_path: "checkpoints/KSC"
-  #   figure_dir: "outputs/KSC"
-
-patch_size: 5
-batch_size: 32
+# 参数
 learning_rate: 0.001
-max_epochs: 1500
-n_components: 30
-use_pca: True
-model_epochs_file: "configs/model_epochs.yaml"
+max_epochs: 200
+# 所有的对比试验都不使用PCA
+use_pca: False # 是否使用PCA
+
+# 消融实验保存在ablation.yaml，对比试验保存在compare.yaml
+file_dir: "outputs"
+model_file: "outputs/ablation.yaml" 
+file_name: "ablation"
+
+# 模型
+models:
+  # 对比试验：对比试验不使用PCA降维
+  # - name: Spectral2DCNN
+  # - name: Spectral3DCNN #3DCNN
+  # - name: SSRN
+
+  # 消融实验
+  - name: NOPCA # 不能与其他消融实验一起训练，但是可以与对比试验一起训练
+  # - name: DBNN
+  # - name: NOGUIDE
+  # - name: NOMULTI
+  # - name: NORES
+  # - name: NOAT
+  # - name: NOTR
+
+# 数据集
+datasets:
+  - name: IP # 数据集名称
+    data_path: "data/IP/IP.mat" # 数据集文件路径
+    label_path: "data/IP/IP_gt.mat" # 标签文件路径
+    model_path: "checkpoints/IP/" # 模型保存路径，用于保存每次训练后的模型参数
+    figure_dir: "outputs/IP" # 可视化结果的输出目录
+    train_split: 0.1 # 训练集比例
+    patch_size: 7 # 图像块的尺寸
+    batch_size: 32 # 每轮训练使用的样本批量大小
+    n_components: 30 # PCA降维后的维度
+    weight_decay: 0 # 权重衰减系数，0表示不适用正则化
+    p: 0.1 # dropout概率，防止过拟合。
+
+  - name: PU
+    data_path: "data/PU/PU.mat"
+    label_path: "data/PU/PU_gt.mat"
+    model_path: "checkpoints/PU"
+    figure_dir: "outputs/PU"
+    train_split: 0.1
+    patch_size: 7
+    batch_size: 32 
+    n_components: 30
+    weight_decay: 0
+    p: 0.1
+    
+  - name: KSC
+    data_path: "data/KSC/KSC.mat"
+    label_path: "data/KSC/KSC_gt.mat"
+    model_path: "checkpoints/KSC"
+    figure_dir: "outputs/KSC"
+    train_split: 0.1
+    patch_size: 7
+    batch_size: 32 
+    n_components: 30
+    weight_decay: 0
+    p: 0.1

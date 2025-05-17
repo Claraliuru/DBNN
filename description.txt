@@ -1,0 +1,29 @@
+1. 程序名称： 基于双分支神经网络的高光谱图像分类（DBNN）
+2. 运行平台及语言：
+ - 操作系统：Windows
+ - Python 版本：3.10
+3. 依赖环境
+ - torch 2.6.0+cu126
+ - torchvision 0.21.0+cu126
+ - torchaudio 2.6.0+cu126
+ - numpy 2.0.2
+ - sckit-learn 1.6.1
+ - scipy 1.15.2
+ - matplotlib 3.10.1
+ - pandas 2.2.3
+ - PyYAML 6.0.2
+ （完整依赖包见 `requirements.txt`）
+4. 程序结构：
+ - main.py：主控程序，自动完成除SVM+PCA模型之外模型的训练、测试、保存结果
+ - configs/config.yaml：YAML配置文件，定义参数和训练参数
+ - data/：模型所用的数据集
+ - models/：模型架构
+ - utils/：工具函数（训练、可视化、评价指标）
+ - conclusion.py：统计多个模型结果
+ - outputs/：保存训练结果、图像
+ - checkpoints/:保存模型训练记录
+5. 程序运行方式
+ - 设置configs/config.yaml文件中的参数和所用的模型，注意NOPCA模型是将use_pca设置为False，不能与其他消融实验同时进行
+ - 执行主程序main.py，输出结果和分类结果图保存在outputs文件夹中
+ - 执行程序conclusion.py统计多个模型结果
+6. 其他说明：SVM+PCA模型需要在svm_pca.py文件单独运行，Spectral2DCNN、Spectral3DCNN、SSRN和NOPCA模型的use_pca设置为False，其他设置为True。

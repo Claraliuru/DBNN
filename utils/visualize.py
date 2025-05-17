@@ -1,11 +1,6 @@
 import numpy as np
 import torch
-import string
 import matplotlib.pyplot as plt
-from data_lodaer.loader import HSI
-from models.dbnn import DBNN
-from utils.helper import load_model
-import yaml
 import os
 
 
@@ -24,14 +19,16 @@ class Visualize:
         model.to(self.device)
         model.eval()
         h, w, _ = dataset.data.shape
-        classification_map = np.zeros((h, w), dtype=np.int64) # 初始化
+        classification_map = np.zeros((h, w), dtype=np.int64) # 初始化， H,W,C
 
         with torch.no_grad():
+            # 遍历整张图像中所有像素位置。若该位置没有标签（背景），则预测结果设为 0
             for x in range(h):
                 for y in range(w):
                     if dataset.label[x, y] == 0:
                         classification_map[x, y] = 0
                     else:
+                        #否则提取包含该像素的 patch，并转成 PyTorch tensor 格式（转置为 [C, H, W]，再扩展为 batch 维度 [1, C, H, W]）。
                         patch = dataset.extract_patch(x, y) # 提取补丁
                         patch = torch.tensor(patch).permute(2, 0, 1).unsqueeze(0).to(self.device)  # [1, C, H, W]
                         output = model(patch, patch)
@@ -40,62 +37,38 @@ class Visualize:
 
         return classification_map
     
-    def visualize_ground_truth_and_classification(self, ground_truth, classification_map, title="Classification Map"):
+    def save_single_map(self, img, title="", save_path=None):
         """
-        可视化真值图和分类结果图
-        ground_truth: 真值图
-        classification_map: 分类结果图
+        保存单张分类图或真值图
+        img: 图像矩阵
         title: 图像标题
+        save_path: 保存路径（含文件名）
         """
-        plt.figure(figsize=(12, 6))
-
-        # 真值图
-        plt.subplot(1, 2, 1)
-        plt.imshow(ground_truth, cmap='jet', vmin=1, vmax=np.max(ground_truth))
-        plt.title("(a) Grpund Truth", y=-0.1)
+        plt.figure(figsize=(6, 6))
+        plt.imshow(img, cmap='jet', vmin=0, vmax=np.max(img))
+        if title:
+            plt.title(title, y=-0.1)
         plt.axis('off')
+        plt.tight_layout()
 
-        # 分类结果图
-        plt.subplot(1, 2, 2)
-        plt.imshow(classification_map, cmap='jet', vmin=1, vmax=np.max(ground_truth))
-        plt.title("(b) {title}", y=-0.1)
-        plt.axis('off')
+        if save_path:
+            os.makedirs(os.path.dirname(save_path), exist_ok=True)
+            plt.savefig(save_path, bbox_inches='tight')
+        else:
+            plt.show()
+        plt.close()
 
-        # 保存图像
-        # plt.show()
-
-    def visualize_comparison(self, ground_truth, model_maps:dict, save_path=None):
+    def visualize_comparison(self, ground_truth, cls_map, save_name, save_dir=None):
         """
         真值图 + 多个模型的分类图
         model_maps: dict，键为模型名，值为分类图（H, W）
         """
-        num_models = len(model_maps)
-        total = num_models + 1 # 模型数加真值图
+        if save_dir:
+            os.makedirs(save_dir, exist_ok=True)
 
-        row = 2 if total > 3 else 1
-        col = (total + 1) // 2 if row == 2 else total
-        
-        plt.figure(figsize=(6 * col, 5 * row))
- 
-        alphabet = list(string.ascii_lowercase)
+        gt_path = os.path.join(save_dir, "ground_truth.png") if save_dir else None
+        self.save_single_map(ground_truth, save_path=gt_path)
 
-        # 真值图
-        plt.subplot(row, col, 1)
-        plt.imshow(ground_truth, cmap='jet', vmin=0, vmax=np.max(ground_truth))
-        plt.title(f"({alphabet[0]})", y=-0.1)
-        plt.axis('off')
-
-        # 模型结果
-        for i, (model_name,cls_map) in enumerate(model_maps.items(), start=2):
-            plt.subplot(row, col, i)
-            plt.imshow(cls_map, cmap='jet', vmin=0, vmax=np.max(ground_truth))
-            plt.title(f"({alphabet[i-1]})", y=-0.1)
-            plt.axis('off')
-
-        if save_path:
-            plt.subplots_adjust(hspace=0.1, wspace=0.1)  # 设置固定纵向/横向间距
-            plt.savefig(save_path)
-        else:
-            plt.subplots_adjust(hspace=0.1, wspace=0.1)  # 即使不保存也调整间距
-
-        # plt.show()    
+        model_path = os.path.join(save_dir, f"{save_name}.png") if save_dir else None
+        self.save_single_map(cls_map, save_path=model_path)
+    

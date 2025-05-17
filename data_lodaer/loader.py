@@ -6,47 +6,46 @@ from torch.utils.data import DataLoader, Dataset
 from sklearn.preprocessing import MinMaxScaler
 from sklearn.decomposition import PCA
 
+# 定义HSI数据集类，继承Pytorch的Dataset类
 class HSI(Dataset):
-    def __init__(self, data_path, label_path, patch_size=5, train=True, train_split=0.1, use_pca=False, n_components=10):
-        # 加载数据集
+    def __init__(self, data_path, label_path, patch_size=5, batch_size=32, train=True, train_split=0.1, use_pca=False, n_components=10):
+        # 初始化：加载数据、处理数据、划分训练集和测试集等
         self.data, self.label = self.load_data(data_path, label_path, use_pca, n_components)
-       
+        self.batch_size = batch_size
         self.patch_size = patch_size
-        self.train = train
-        self.train_split = train_split
+        self.train = train # 是否是训练集
+        self.train_split = train_split # 训练集比例
 
-        # 数据集划分
+        # 数据集划分为测试集和训练集
         self.train_data, self.test_data, self.train_label, self.test_label = self.split_data()
-        self.num_channels = self.data.shape[2]
-        self.num_classes = np.unique(self.label).size
+        self.num_channels = self.data.shape[2] # 通道数
+        self.num_classes = np.unique(self.label).size # 类别数
 
     def load_data(self, data_path, label_path, use_pca, n_components):
         # 读取.mat文件
-        data = sio.loadmat(data_path)
-        label = sio.loadmat(label_path)
+        data = sio.loadmat(data_path) # 加载数据
+        label = sio.loadmat(label_path) # 加载标签
 
         # 解析数据
         data_key = list(data.keys())[-1]  # 获取数据键
-        label_key = list(label.keys())[-1]
+        label_key = list(label.keys())[-1] # 标签键
 
         data = data[data_key].astype(np.float32)  # 提取数据并转换为float32类型
-        label = label[label_key].astype(np.int64)
+        label = label[label_key].astype(np.int64) # 标签转换为int64
 
         # 归一化数据
-        scaler = MinMaxScaler()  # 创建归一化器
-        height, width, channels = data.shape
-        data = data.reshape(-1, channels)
-        data = scaler.fit_transform(data)
-        data = data.reshape(height, width, channels)
-
+        scaler = MinMaxScaler()  # 实例归一化器
+        height, width, channels = data.shape # 获取原始尺寸
+        data = data.reshape(-1, channels) # 展平
+        data = scaler.fit_transform(data) # 执行归一化
+        data = data.reshape(height, width, channels) # 回复形状
+ 
         # PCA降维
         if use_pca:
             pca = PCA(n_components=n_components)  # 使用n_components指定降维后的维度
             data = data.reshape(-1, channels)  # 先将数据展平
             data = pca.fit_transform(data)  # 进行PCA降维
             data = data.reshape(height, width, n_components)  # 恢复成原始数据的尺寸（高，宽，降维后的通道数）
-
-        self.label_shape = label.shape
 
         return data, label
 
@@ -55,10 +54,11 @@ class HSI(Dataset):
 
         # 获取非零标签的索引
         indices = np.array(np.nonzero(self.label)).T
-        indices = indices[self.label[tuple(indices.T)] != 0]
-        num_samples = indices.shape[0]
+        indices = indices[self.label[tuple(indices.T)] != 0] # 排除背景类
+        num_samples = indices.shape[0] # 样本数量
 
-        # 生成随机排列
+
+        # 随机打乱排列
         perm = np.random.permutation(num_samples)  # 生成随机排列
         train_size = int(num_samples * self.train_split)  # 计算训练集大小
 
@@ -73,10 +73,10 @@ class HSI(Dataset):
         # 生成测试集
         test_data = np.array([self.extract_patch(x, y) for x, y in test_indices])
         test_label = self.label[tuple(test_indices.T)]
-
         return train_data, test_data, train_label, test_label
     
     def extract_patch(self, x, y):
+        # 给定坐标(x, y)，提取以其为中心的patch
         half_size = self.patch_size // 2
         height, width, channels = self.data.shape
 
@@ -93,7 +93,7 @@ class HSI(Dataset):
         # 提取patch
         patch = self.data[x_min:x_max, y_min:y_max, :]
 
-        # 处理边界情况
+        # 处理边界情况，边缘处不足则填充为0
         if patch.shape[0] < self.patch_size or patch.shape[1] < self.patch_size:
             padded_patch = np.zeros((self.patch_size, self.patch_size, channels), dtype=np.float32)
             padded_patch[:patch.shape[0], :patch.shape[1], :] = patch
@@ -122,14 +122,14 @@ class HSI(Dataset):
             spatial_data = torch.tensor(self.test_data[index]).permute(2, 0, 1)
             label = torch.tensor(self.test_label[index])
     
-        return spectral_data, spatial_data, label
+        return spectral_data, spatial_data, label # 返回一个样本
 
     @staticmethod
     def get_dataloader(data_path, label_path, batch_size=32, patch_size=5, train=True, use_pca=False, n_components=10):
-        # 静态方法：创建数据加载器
-        dataset = HSI(data_path, label_path, patch_size, train, use_pca=use_pca, n_components=n_components)
+        # 静态方法：创建并返回Pytorch的DataLoader
+        dataset = HSI(data_path, label_path, patch_size, batch_size, train, use_pca=use_pca, n_components=n_components)
         return DataLoader(
             dataset, 
             batch_size=batch_size, 
-            shuffle=True,
+            shuffle=True, # 打乱顺序
         )
